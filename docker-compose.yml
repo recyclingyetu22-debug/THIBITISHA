@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: document_sentinel
+      POSTGRES_PASSWORD: document_sentinel
+      POSTGRES_DB: document_sentinel
+    ports:
+      - "5432:5432"
+    volumes:
+      - document_sentinel_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U document_sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://document_sentinel:document_sentinel@postgres:5432/document_sentinel
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    volumes:
+      - document_sentinel_uploads:/app/storage/uploads
+
+volumes:
+  document_sentinel_pgdata:
+  document_sentinel_uploads:

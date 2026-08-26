@@ -1,0 +1,93 @@
+/* THIBITISHA design tokens. Light is the default (:root); dark overrides
+   apply only under [data-theme="dark"], set by lib/theme.ts. Brand hues are
+   deliberately limited to indigo (trust/technology) and teal
+   (evidence/verification) — gradients are reserved for the brand mark,
+   primary CTAs, and hero/empty states, never used as card decoration. */
+:root {
+  --bg: #ece9f9;
+  /* Cards/inputs/nav — a tinted lavender-to-mint gradient, never pure white
+     at any stop. --surface-alt stays a single solid color (never a
+     gradient) because it's also used as a color-stop inside the .skeleton
+     loading-shimmer gradient, which requires a plain color there. */
+  --surface: linear-gradient(160deg, #eae7fb, #e3f3ef);
+  --surface-alt: #e6e3f7;
+  --border: #e2e0f0;
+  --border-strong: #c7c3e0;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-faint: #94a3b8;
+
+  --brand-primary: #4f46e5;
+  --brand-primary-hover: #4338ca;
+  --brand-accent: #0d9488;
+  --accent-violet: #9333ea;
+  --brand-gradient: linear-gradient(135deg, #4f46e5, #0ea5a4);
+
+  --status-clear-fg: #047857;
+  --status-clear-bg: #ecfdf5;
+  --status-caution-fg: #b45309;
+  --status-caution-bg: #fffbeb;
+  --status-danger-fg: #b91c1c;
+  --status-danger-bg: #fef2f2;
+  --status-info-fg: #475569;
+  --status-info-bg: #f1f5f9;
+  --status-match-fg: #1d4ed8;
+  --status-match-bg: #eff6ff;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 999px;
+
+  --focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.35);
+
+  /* Calm, mostly-flat base — the GeometricAccent component (flat-colored
+     triangle mosaic, hard edges, no blur) carries the artistic weight now,
+     confined to one corner, matching the reference composition (Microsoft
+     "By the Numbers": solid dark canvas + one geometric cluster, not a
+     blurred wash covering everything). */
+  --page-background: #ece9f9;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0f1a;
+  /* Same reasoning as light — a rich indigo-tinted gradient, not flat
+     charcoal, so the primary (default) theme's surfaces feel designed. */
+  --surface: linear-gradient(160deg, #1c2547, #10162c);
+  --surface-alt: #141d38;
+  --border: #2c3760;
+  --border-strong: #3d4a80;
+  --text: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+
+  --brand-primary: #6366f1;
+  --brand-primary-hover: #818cf8;
+  --brand-accent: #14b8a6;
+  --accent-violet: #a855f7;
+  --brand-gradient: linear-gradient(135deg, #6366f1, #14b8a6);
+
+  --status-clear-fg: #34d399;
+  --status-clear-bg: rgba(16, 185, 129, 0.14);
+  --status-caution-fg: #fbbf24;
+  --status-caution-bg: rgba(217, 119, 6, 0.16);
+  --status-danger-fg: #f87171;
+  --status-danger-bg: rgba(220, 38, 38, 0.16);
+  --status-info-fg: #94a3b8;
+  --status-info-bg: rgba(100, 116, 139, 0.16);
+  --status-match-fg: #60a5fa;
+  --status-match-bg: rgba(37, 99, 235, 0.16);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
+
+  --focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.45);
+
+  --page-background: #0b0f1a;
+}

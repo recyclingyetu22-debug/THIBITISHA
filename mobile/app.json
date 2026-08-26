@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "THIBITISHA",
+    "slug": "document-sentinel",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.documentsentinel.app"
+    },
+    "extra": {
+      "apiBaseUrl": "http://10.0.2.2:4000"
+    }
+  }
+}

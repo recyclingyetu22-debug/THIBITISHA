@@ -1,0 +1,712 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ORG_ADMIN
+  DOCUMENT_OFFICER
+  INVESTIGATOR
+  VERIFIER
+  API_CLIENT
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum DocumentStatus {
+  ACTIVE
+  // REVOKED / EXPIRED land in Phase 5 (revocation)
+}
+
+enum DocumentClassification {
+  INTERNAL
+  CONFIDENTIAL
+  PUBLIC
+}
+
+enum TextExtractionMethod {
+  DIRECT
+  OCR
+}
+
+enum VerificationRequestStatus {
+  PENDING
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
+// Exactly the spec's list (§18) — VERIFIED_MATCH/MODIFIED are only reachable
+// when a reference document was supplied; otherwise the assessment is
+// severity-based (LOW_CONCERN/SUSPICIOUS/HIGH_RISK) or INCONCLUSIVE when
+// extraction/analysis couldn't produce reliable evidence. Nothing invented
+// beyond what the spec names — REQUIRES_MANUAL_REVIEW/NOT_REGISTERED/etc.
+// belong to later phases (human review workflow, QR registry lookup).
+enum VerificationAssessmentStatus {
+  LOW_CONCERN
+  SUSPICIOUS
+  HIGH_RISK
+  INCONCLUSIVE
+  VERIFIED_MATCH
+  MODIFIED
+}
+
+enum FindingCategory {
+  FILE_INTEGRITY
+  PDF_STRUCTURE
+  TEXT_CONSISTENCY
+  IMAGE_SIGNAL
+  AI_INDICATOR
+  REFERENCE_COMPARISON
+  TYPOGRAPHY
+  REGION_FORENSICS
+}
+
+enum FindingSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// Independent, out-of-band confirmation from the document's claimed issuing
+// organization — fundamentally different from a forensic finding (nothing
+// here is computed by a detector) and from reference comparison (no
+// document bytes are compared). No issuer API/portal integration exists;
+// this records the outcome of a manual contact an investigator makes.
+enum IssuerConfirmationStatus {
+  REQUESTED
+  CONFIRMED_GENUINE
+  CONFIRMED_MODIFIED
+  DENIED_ISSUANCE
+  UNREACHABLE
+  DECLINED_TO_CONFIRM
+}
+
+// A human investigator's own determination after weighing forensic
+// assessment + reference comparison + issuer confirmation together —
+// exactly the "Human Review" role the spec describes. Fundamentally
+// different from all three: it's a judgment call, not computed by a
+// detector, not a comparison, not a claim from a third party.
+enum ReviewDecisionStatus {
+  IN_REVIEW
+  CONFIRMED_AUTHENTIC
+  CONFIRMED_MODIFICATION
+  INSUFFICIENT_EVIDENCE
+  REQUEST_MORE_INFORMATION
+  FALSE_POSITIVE
+}
+
+// The kind of customer a plan serves — a label for later checkout/upgrade
+// logic, not a price. No price/currency/interval fields yet: deliberately
+// deferred until checkout is actually built, so nothing here hard-codes a
+// number before the business has decided one.
+enum PlanCategory {
+  INDIVIDUAL_FREE
+  INDIVIDUAL_PAID
+  ORGANIZATION
+  ENTERPRISE
+  API
+}
+
+enum ClientPlatform {
+  WEB
+  MOBILE
+  API
+}
+
+enum BillingInterval {
+  ONE_TIME
+  MONTHLY
+  ANNUAL
+}
+
+// The full commercial vocabulary the ledger can express — grants (free,
+// promo, admin), purchases/subscriptions, the two verification-consumption
+// events, and expiration. Every EntitlementTransaction row has exactly one
+// of these, forever (append-only, never edited).
+enum EntitlementTransactionType {
+  FREE_GRANT
+  PURCHASE
+  SUBSCRIPTION_GRANT
+  VERIFICATION_CONSUMPTION
+  VERIFICATION_REFUND
+  PROMOTIONAL_GRANT
+  ADMIN_ADJUSTMENT
+  EXPIRATION
+}
+
+// Only MOCK exists this phase (Phase B) — a real provider is selected and
+// added in Phase C, once launch country/payment methods are decided.
+enum PaymentProvider {
+  MOCK
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  EXPIRED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+model Organization {
+  id        String             @id @default(uuid())
+  name      String
+  slug      String             @unique
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  // Nullable and unassigned by default — no migration seeds a Plan row, so
+  // every organization (including every test/dev org) starts and stays
+  // planId: null until a future checkout increment assigns one. Unlimited
+  // dev/test usage falls out of this naturally: there is nothing to check
+  // against, not a bypass flag to remember to remove later. There is no
+  // separate "individual user" identity in this system — an individual
+  // registering today gets a one-person Organization, so a plan attaches
+  // here, never directly to User.
+  planId String?
+  plan   Plan?   @relation(fields: [planId], references: [id])
+
+  users                    User[]
+  documents                Document[]
+  auditLogs                AuditLog[]
+  verificationRequests     VerificationRequest[]
+  issuerConfirmationEvents IssuerConfirmationEvent[]
+  reviewEvents             ReviewEvent[]
+  usageRecords             UsageRecord[]
+  entitlementAccount       EntitlementAccount?
+
+  @@map("organizations")
+}
+
+model Plan {
+  id          String       @id @default(uuid())
+  key         String       @unique // e.g. "individual_free" — real keys/values are a later business decision
+  name        String
+  description String?
+  category    PlanCategory
+  // null = a one-time grant/package template (e.g. "3 free verifications",
+  // "STARTER — 5 verifications"). MONTHLY/ANNUAL = a recurring subscription
+  // tier, consumed via Subscription rows that re-grant allowancePerPeriod
+  // each period. This is the same shape either way (name/allowance/price);
+  // billingInterval is what distinguishes a purchasable package from a
+  // subscription tier, so one table serves both rather than two near-
+  // identical ones.
+  billingInterval    BillingInterval?
+  // null = unlimited. See the comment on Organization.planId.
+  allowancePerPeriod Int?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organizations       Organization[]
+  pricing              Pricing[]
+  subscriptions        Subscription[]
+  paymentTransactions  PaymentTransaction[]
+
+  @@map("plans")
+}
+
+model Pricing {
+  id       String   @id @default(uuid())
+  planId   String
+  plan     Plan     @relation(fields: [planId], references: [id])
+  currency String // ISO 4217, e.g. "USD"
+  amount   Int // minor units (cents) — never a float, avoids money rounding bugs
+  country  String? // null = default price for that currency
+  active   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId, currency, country])
+  @@map("pricing")
+}
+
+// One per Organization (not per User — individuals are already one-person
+// organizations in this system, see Organization.planId's comment, so this
+// needs no separate membership concept). No account at all = unlimited,
+// exactly like "no plan" today — every organization that predates billing
+// simply has no row here and is never gated.
+model EntitlementAccount {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  // A maintained cache, always updated atomically alongside an
+  // EntitlementTransaction insert — never independently settable.
+  // EntitlementTransaction is the source of truth; this exists purely so a
+  // balance check doesn't need to SUM the whole ledger every time.
+  balance   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions        EntitlementTransaction[]
+  paymentTransactions PaymentTransaction[]
+  subscriptions       Subscription[]
+
+  @@map("entitlement_accounts")
+}
+
+// Append-only — same discipline as IssuerConfirmationEvent/ReviewEvent/
+// UsageRecord elsewhere in this schema. No service ever issues an UPDATE or
+// DELETE against this table; a correction is always a new row (e.g.
+// VERIFICATION_REFUND after VERIFICATION_CONSUMPTION), never an edit.
+model EntitlementTransaction {
+  id           String             @id @default(uuid())
+  accountId    String
+  account      EntitlementAccount @relation(fields: [accountId], references: [id])
+
+  type         EntitlementTransactionType
+  amount       Int // signed: +N for grants/purchases, -1 for consumption
+  balanceAfter Int
+
+  referenceType String? // "VerificationRequest" | "PaymentTransaction" | "Subscription"
+  referenceId   String?
+  metadata      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("entitlement_transactions")
+}
+
+model PaymentTransaction {
+  id                    String             @id @default(uuid())
+  accountId             String
+  account               EntitlementAccount @relation(fields: [accountId], references: [id])
+
+  provider              PaymentProvider
+  providerTransactionId String
+  // "PACKAGE_PURCHASE" | "SUBSCRIPTION_CHARGE" — a string, not an enum yet,
+  // for Phase A/B flexibility before a second provider exists.
+  type                  String
+  status                PaymentStatus
+  amount                Int
+  currency              String
+  planId                String?
+  plan                  Plan?    @relation(fields: [planId], references: [id])
+  metadata              Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The actual double-processing guard for webhook idempotency: a replayed
+  // webhook's insert hits this constraint and is caught as a no-op rather
+  // than granting entitlement twice.
+  @@unique([provider, providerTransactionId])
+  @@map("payment_transactions")
+}
+
+model Subscription {
+  id                     String             @id @default(uuid())
+  accountId              String
+  account                EntitlementAccount @relation(fields: [accountId], references: [id])
+  planId                 String
+  plan                   Plan               @relation(fields: [planId], references: [id])
+
+  provider               PaymentProvider
+  providerSubscriptionId String?
+  status                 SubscriptionStatus
+  currentPeriodStart     DateTime
+  currentPeriodEnd       DateTime
+  cancelledAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerSubscriptionId])
+  @@map("subscriptions")
+}
+
+model User {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  email        String     @unique
+  passwordHash String
+  name         String
+  status       UserStatus @default(ACTIVE)
+
+  roles UserRole[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documentsCreated                 Document[]                @relation("DocumentCreatedBy")
+  versionsCreated                  DocumentVersion[]         @relation("VersionCreatedBy")
+  auditLogs                        AuditLog[]
+  verificationsSubmitted           VerificationRequest[]     @relation("VerificationSubmittedBy")
+  issuerConfirmationEventsRecorded IssuerConfirmationEvent[]
+  reviewEventsRecorded             ReviewEvent[]
+  usageRecords                     UsageRecord[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role
+
+  @@unique([userId, role])
+  @@map("user_roles")
+}
+
+// Global (cross-organization), per-year counter backing the human-readable
+// document number (DOC-<year>-<seq>). documentNumber is meant to work as a
+// standalone public lookup key (QR verification, Phase 5) independent of
+// which organization issued it, so the counter must be global, not per-org
+// — otherwise two organizations' first documents of the year would both be
+// DOC-<year>-00000001 and collide on Document.documentNumber's unique
+// constraint. Incremented inside the same transaction that creates the
+// Document row, so numbers never collide or gap under concurrency.
+model DocumentNumberCounter {
+  year      Int @id
+  lastValue Int @default(0)
+
+  @@map("document_number_counters")
+}
+
+model Document {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  documentNumber String  @unique
+  documentType   String
+  title          String
+  issuer         String?
+  ownerName      String?
+
+  status         DocumentStatus         @default(ACTIVE)
+  classification DocumentClassification @default(INTERNAL)
+
+  currentVersionId String?          @unique
+  currentVersion   DocumentVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  versions DocumentVersion[] @relation("DocumentVersions")
+
+  createdById String
+  createdBy   User   @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+
+  // Verifications that used this Document as an optional reference/original —
+  // Increment 1's primary workflow never requires this to be non-empty.
+  referencedByVerifications VerificationRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("documents")
+}
+
+// Immutable once written: a "new version" is always an INSERT. The app layer
+// must never UPDATE a DocumentVersion's file-derived fields (storageKey,
+// sha256, sizeBytes, mimeType) after creation.
+model DocumentVersion {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation("DocumentVersions", fields: [documentId], references: [id])
+
+  versionNumber Int
+  storageKey    String
+  mimeType      String
+  sizeBytes     Int
+  sha256        String
+  reason        String?
+
+  createdById String
+  createdBy   User     @relation("VersionCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  fingerprint DocumentFingerprint?
+  currentFor  Document?            @relation("CurrentVersion")
+
+  @@unique([documentId, versionNumber])
+  @@map("document_versions")
+}
+
+// Cache, not a log: extracted text for a given content hash is computed
+// lazily the first time something needs it and reused after — registering a
+// document, or submitting a verification, never runs OCR unconditionally
+// (cost control, spec §28). Keyed by sha256 rather than a DocumentVersion FK
+// so the same cache serves both a registered Document's original *and* an
+// arbitrary standalone verification upload — nothing here requires prior
+// registration.
+model DocumentText {
+  id     String @id @default(uuid())
+  sha256 String @unique
+
+  extractionMethod  TextExtractionMethod
+  text              String
+  pageCount         Int // total pages in the document — always the true total
+  analyzedPageCount Int                  @default(0) // pages actually read; < pageCount means incomplete coverage (see pdfRasterizer.ts)
+
+  createdAt DateTime @default(now())
+
+  @@map("document_texts")
+}
+
+// Phase 1 only populates sha256. The other columns are nullable now so later
+// phases (text/visual/structural fingerprinting) add data, not a migration
+// that reshapes this table.
+model DocumentFingerprint {
+  id                String          @id @default(uuid())
+  documentVersionId String          @unique
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
+
+  sha256                String
+  sha512                String?
+  textFingerprint       String?
+  visualFingerprint     String?
+  structuralFingerprint String?
+
+  createdAt DateTime @default(now())
+
+  @@map("document_fingerprints")
+}
+
+// The submitted file this row points at (via storageKey) *is* Increment 1's
+// evidence record — a dedicated Evidence table with its own retention/
+// chain-of-custody rules is Phase 6 (case management) territory.
+// documentId (Document registration) is NOT required — this is the whole
+// point of the pivot: any uploaded document can be verified standalone.
+// referenceDocumentId is the only optional link to a registered Document,
+// used solely when the caller supplies one for comparison.
+model VerificationRequest {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  submittedById String
+  submittedBy   User   @relation("VerificationSubmittedBy", fields: [submittedById], references: [id])
+
+  storageKey       String
+  mimeType         String
+  sha256           String
+  originalFilename String
+  sizeBytes        Int
+
+  referenceDocumentId String?
+  referenceDocument   Document? @relation(fields: [referenceDocumentId], references: [id])
+
+  status VerificationRequestStatus @default(PENDING)
+
+  // Which client submitted this — attribution/analytics, not an auth
+  // boundary (unlike organizationId, which only ever comes from the
+  // verified JWT). Read from an optional X-Client-Platform request header.
+  platform ClientPlatform @default(WEB)
+
+  // Denormalized pointer to the latest ReviewEvent.status, kept in sync by
+  // recordReviewEvent inside the same transaction that inserts the event.
+  // Exists purely so the investigator queue can filter/sort cheaply — the
+  // ReviewEvent history remains the source of truth; nothing reads this
+  // field instead of the history, only alongside it. Null = NOT_REVIEWED
+  // (no ReviewEvent exists yet).
+  currentReviewStatus ReviewDecisionStatus?
+
+  // Coverage — populated once analysis completes. Null until then (or for
+  // the byte-identical short-circuit path, where no page-level analysis
+  // runs at all). coverageIncomplete MUST be checked by API consumers
+  // before treating a "clean" assessment as exhaustive — see assessment.ts.
+  pageCount          Int?
+  analyzedPageCount  Int?
+  coverageIncomplete Boolean @default(false)
+
+  // Which detectors actually ran, one entry per module:
+  // { module, status: "ran"|"skipped"|"failed", reason? }[]. Built by
+  // orchestrator.ts as it walks its existing control flow (evidenceReport.ts
+  // needs this persisted, not recomputed later — a module that ran and
+  // found nothing is otherwise indistinguishable from one that never ran).
+  moduleCoverage Json?
+
+  findings                 VerificationFinding[]
+  assessment               VerificationAssessment?
+  issuerConfirmationEvents IssuerConfirmationEvent[]
+  reviewEvents             ReviewEvent[]
+  usageRecord              UsageRecord?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, currentReviewStatus])
+  @@map("verification_requests")
+}
+
+// One row per piece of evidence (spec §17) — never a single fake/real flag.
+// `module` names which analyzer produced it (e.g. "textConsistency",
+// "aiIndicators:heuristic") so findings stay traceable as more analyzers are
+// added in later increments.
+model VerificationFinding {
+  id                    String              @id @default(uuid())
+  verificationRequestId String
+  verificationRequest   VerificationRequest @relation(fields: [verificationRequestId], references: [id])
+
+  category    FindingCategory
+  severity    FindingSeverity
+  confidence  Float?
+  description String
+  evidence    Json?
+  page        Int?
+  // Normalized PixelRect[] — rasterized-pixel space, distinct from the
+  // free-form `evidence` blob. What correlation.ts compares across findings
+  // from different detectors on the same page. Null for findings with no
+  // spatial locality (metadata, text-content-only signals) — see finding.ts.
+  regions     Json?
+  module      String
+
+  createdAt DateTime @default(now())
+
+  @@index([verificationRequestId])
+  @@map("verification_findings")
+}
+
+// 1:1 with the request — mirrors Document/DocumentVersion's separation
+// (request = the submission, assessment = the verdict computed from it).
+// Produced by a swappable assessment policy (see assessment.ts) — this table
+// stores whatever policy decided, not a hard-coded rule outcome, so a future
+// forensic-weighting model can replace the policy without a schema change.
+model VerificationAssessment {
+  id                    String              @id @default(uuid())
+  verificationRequestId String              @unique
+  verificationRequest   VerificationRequest @relation(fields: [verificationRequestId], references: [id])
+
+  status         VerificationAssessmentStatus
+  summary        String
+  recommendation String
+
+  createdAt DateTime @default(now())
+
+  @@map("verification_assessments")
+}
+
+// Append-only, same pattern as AuditLog: a verification's *current*
+// issuer-confirmation status is always "the most recent event," never a
+// separately-stored mutable field that could drift out of sync with its own
+// history. Deliberately never linked into VerificationAssessment/
+// VerificationFinding — the forensic report stays immutable evidence
+// whether or not issuer confirmation ever happens, and no code path here
+// (or anywhere) updates those tables after they're written.
+model IssuerConfirmationEvent {
+  id                    String              @id @default(uuid())
+  verificationRequestId String
+  verificationRequest   VerificationRequest @relation(fields: [verificationRequestId], references: [id])
+  organizationId        String
+  organization          Organization        @relation(fields: [organizationId], references: [id])
+
+  status        IssuerConfirmationStatus
+  recordedById  String
+  recordedBy    User                     @relation(fields: [recordedById], references: [id])
+  contactMethod String?
+  notes         String?
+
+  createdAt DateTime @default(now())
+
+  @@index([verificationRequestId, createdAt])
+  @@map("issuer_confirmation_events")
+}
+
+// Append-only, identical pattern to IssuerConfirmationEvent — a
+// verification's *current* review status is always "the most recent
+// event." Deliberately never linked into VerificationAssessment/
+// VerificationFinding/IssuerConfirmationEvent: a reviewer decision is a
+// judgment call layered on top of the other three concepts, never a
+// mutation of any of them.
+model ReviewEvent {
+  id                    String              @id @default(uuid())
+  verificationRequestId String
+  verificationRequest   VerificationRequest @relation(fields: [verificationRequestId], references: [id])
+  organizationId        String
+  organization          Organization        @relation(fields: [organizationId], references: [id])
+
+  status       ReviewDecisionStatus
+  reviewedById String
+  reviewedBy   User                 @relation(fields: [reviewedById], references: [id])
+  notes        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([verificationRequestId, createdAt])
+  @@map("review_events")
+}
+
+// Append-only fact table, same discipline as IssuerConfirmationEvent/
+// ReviewEvent: observes a verification without ever being observed by it.
+// Forensic verification != billing/usage != reviewer decision != issuer
+// confirmation — a verification stays a forensic record even if billing
+// rules change later. Written exactly once, from inside the same
+// transaction that finalizes a verification's assessment (see
+// modules/billing/usage.ts) — never at upload-received time, so a failed
+// upload, unsupported file type, or a crash mid-analysis never creates one.
+model UsageRecord {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+
+  verificationRequestId String              @unique
+  verificationRequest   VerificationRequest @relation(fields: [verificationRequestId], references: [id])
+
+  platform ClientPlatform
+
+  // Calendar-month bucket this record falls into, computed at write time
+  // (see usagePeriodStart() in usage.ts) — not a live subscription-cycle
+  // anchor, since no subscriptions exist yet. Enough for a future
+  // GROUP BY usage rollup; additive to replace with real cycle anchoring
+  // once checkout exists.
+  usagePeriodStart DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, usagePeriodStart])
+  @@map("usage_records")
+}
+
+// Append-only from the application's perspective: no service/route ever
+// issues an UPDATE or DELETE against this table.
+model AuditLog {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
