@@ -1,5 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Explicit musl+OpenSSL-3 target: the deployed container (node:20-alpine)
+  // only ships OpenSSL 3.x, but Prisma's engine auto-detection during local
+  // `generate` (on a different OS) can pick the older OpenSSL-1.1.x musl
+  // engine, which then fails to load at runtime with
+  // "Error loading shared library libssl.so.1.1: No such file or directory".
+  // "native" keeps local dev (Windows) working as before.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
