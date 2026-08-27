@@ -1,15 +1,21 @@
 {
   "expo": {
     "name": "THIBITISHA",
-    "slug": "document-sentinel",
+    "slug": "thibitisha",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "android": {
-      "package": "com.documentsentinel.app"
+      "package": "com.thibitisha.app",
+      "versionCode": 1
+    },
+    "ios": {
+      "bundleIdentifier": "com.thibitisha.app",
+      "buildNumber": "1",
+      "supportsTablet": true
     },
     "extra": {
-      "apiBaseUrl": "http://10.0.2.2:4000"
+      "apiBaseUrl": "https://thibitisha.up.railway.app"
     }
   }
 }
