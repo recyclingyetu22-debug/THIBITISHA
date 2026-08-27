@@ -18,6 +18,7 @@ import { Card } from "../components/Card.js";
 import { HeroForensicVisual } from "../illustrations/HeroForensicVisual.js";
 import { WhatWeLookForVisual } from "../illustrations/WhatWeLookForVisual.js";
 import { BeforeAfterVisual } from "../illustrations/BeforeAfterVisual.js";
+import { MOBILE_APK_URL } from "../lib/constants.js";
 
 const FOUR_CONCEPTS = [
   { icon: ShieldCheck, kind: "automated", title: "Forensic Assessment", body: "Our detectors examine the document itself and report what they find — never a claim of authenticity, just evidence." },
@@ -31,18 +32,18 @@ const USE_CASES = [
   { icon: Users, title: "Individuals", body: "Anyone can upload a single document and get a clear, honest forensic read — no account setup required to see how it works." },
 ];
 
-// The mobile APK, once built, is copied to web/public/downloads/ (see
-// scripts/README or the build increment notes) — Vite serves public/ as
-// static files, so this path just works once the file exists there.
-const MOBILE_APK_PATH = "/downloads/thibitisha-mobile.apk";
-
 const PLATFORMS = [
-  { icon: Globe, title: "Web", body: "The full verification client and investigator workspace, available now.", status: null },
+  {
+    icon: Globe,
+    title: "Web",
+    body: "Explains what THIBITISHA does and lets you try it — 2 free verifications, right in your browser, no install needed.",
+    status: null,
+  },
   {
     icon: Smartphone,
-    title: "Mobile",
-    body: "An early build is available to try — sign in, register a document, view and download it. The full scan-and-verify flow (upload → evidence, the same experience as web) hasn't landed on mobile yet.",
-    status: "Early build",
+    title: "Mobile app",
+    body: "The full THIBITISHA experience: unlimited access to the same forensic examination, once you've used your free web verifications.",
+    status: null,
   },
   { icon: Sparkles, title: "Enterprise & API", body: "Volume verification and integrations for platforms and institutions.", status: "Coming soon" },
 ];
@@ -152,11 +153,11 @@ export function HomeScreen() {
             <Card key={p.title} title={p.title} icon={<p.icon size={16} />}>
               <p className="card-subtext" style={{ marginBottom: 10 }}>{p.body}</p>
               {p.status ? <span className="badge tone-info">{p.status}</span> : null}
-              {p.title === "Mobile" ? (
+              {p.title === "Mobile app" ? (
                 <div style={{ marginTop: 12 }}>
-                  <a href={MOBILE_APK_PATH} download>
+                  <a href={MOBILE_APK_URL} target="_blank" rel="noopener noreferrer">
                     <Button variant="secondary" size="sm">
-                      <Download size={13} /> Download APK
+                      <Download size={13} /> Download for Android
                     </Button>
                   </a>
                   <p className="card-subtext" style={{ marginTop: 8, marginBottom: 0 }}>

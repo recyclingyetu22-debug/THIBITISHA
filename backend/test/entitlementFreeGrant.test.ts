@@ -16,8 +16,8 @@ describe("free-grant entitlement on registration", () => {
     // run against the test database.
     await prisma.plan.upsert({
       where: { key: "individual_free_grant" },
-      create: { key: "individual_free_grant", name: "Free", category: "INDIVIDUAL_FREE", billingInterval: null, allowancePerPeriod: 3 },
-      update: { active: true, allowancePerPeriod: 3 },
+      create: { key: "individual_free_grant", name: "Free", category: "INDIVIDUAL_FREE", billingInterval: null, allowancePerPeriod: 2 },
+      update: { active: true, allowancePerPeriod: 2 },
     });
   });
 
@@ -37,12 +37,12 @@ describe("free-grant entitlement on registration", () => {
 
     const account = await request(app).get("/billing/account").set("Authorization", `Bearer ${accessToken}`);
     expect(account.status).toBe(200);
-    expect(account.body).toEqual({ hasAccount: true, unlimited: false, balance: 3, updatedAt: expect.any(String) });
+    expect(account.body).toEqual({ hasAccount: true, unlimited: false, balance: 2, updatedAt: expect.any(String) });
 
     const transactions = await request(app).get("/billing/transactions").set("Authorization", `Bearer ${accessToken}`);
     expect(transactions.status).toBe(200);
     expect(transactions.body).toHaveLength(1);
-    expect(transactions.body[0]).toMatchObject({ type: "FREE_GRANT", amount: 3, balanceAfter: 3 });
+    expect(transactions.body[0]).toMatchObject({ type: "FREE_GRANT", amount: 2, balanceAfter: 2 });
   });
 
   // The fail-open "no seeded plan = no account = unlimited" path is not

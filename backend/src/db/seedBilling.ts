@@ -20,7 +20,10 @@ interface PlanSeed {
 }
 
 const PLANS: PlanSeed[] = [
-  { key: "individual_free_grant", name: "Free", description: "Granted automatically when you register.", category: "INDIVIDUAL_FREE", billingInterval: null, allowancePerPeriod: 3, priceUsdCents: null },
+  // Web gets exactly 2 free verifications, then the site directs people to
+  // download the app instead of showing a paywall on web (see
+  // VerifyHomeScreen.tsx) — kept low deliberately, not a hard sell tier.
+  { key: "individual_free_grant", name: "Free", description: "Granted automatically when you register.", category: "INDIVIDUAL_FREE", billingInterval: null, allowancePerPeriod: 2, priceUsdCents: null },
   { key: "starter_package", name: "Starter", description: "A small one-time verification package.", category: "INDIVIDUAL_PAID", billingInterval: "ONE_TIME", allowancePerPeriod: 5, priceUsdCents: 499 },
   { key: "basic_package", name: "Basic", description: "A one-time verification package.", category: "INDIVIDUAL_PAID", billingInterval: "ONE_TIME", allowancePerPeriod: 15, priceUsdCents: 1299 },
   { key: "professional_package", name: "Professional", description: "A larger one-time verification package.", category: "INDIVIDUAL_PAID", billingInterval: "ONE_TIME", allowancePerPeriod: 50, priceUsdCents: 3999 },
